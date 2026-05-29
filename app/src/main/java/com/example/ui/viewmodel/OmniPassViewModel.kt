@@ -100,7 +100,8 @@ class OmniPassViewModel(application: Application) : AndroidViewModel(application
 
         viewModelScope.launch {
             repository.allCards.collect { list ->
-                if (list.isEmpty()) {
+                if (list.isEmpty() && !prefs.getBoolean("db_auto_seeded", false)) {
+                    prefs.edit().putBoolean("db_auto_seeded", true).apply()
                     populateDefaultCards()
                 }
             }
@@ -338,7 +339,10 @@ class OmniPassViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.clearAllCards()
             repository.clearAllFinances()
-            prefs.edit().putBoolean("onboarding_finished", false).apply()
+            prefs.edit()
+                .putBoolean("onboarding_finished", false)
+                .putBoolean("db_auto_seeded", false)
+                .apply()
             navigateTo(Screen.Onboarding)
         }
     }

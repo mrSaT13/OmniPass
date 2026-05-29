@@ -40,7 +40,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        nfcAdapter = try {
+            NfcAdapter.getDefaultAdapter(this)
+        } catch (e: Exception) {
+            null
+        }
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -190,19 +194,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        nfcAdapter?.let { adapter ->
-            val intent = Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            val pendingIntent = PendingIntent.getActivity(
-                this, 0, intent,
-                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-            adapter.enableForegroundDispatch(this, pendingIntent, null, null)
+        try {
+            nfcAdapter?.let { adapter ->
+                val intent = Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    this, 0, intent, flags
+                )
+                adapter.enableForegroundDispatch(this, pendingIntent, null, null)
+            }
+        } catch (t: Throwable) {
+            t.printStackTrace()
         }
     }
 
     override fun onPause() {
         super.onPause()
-        nfcAdapter?.disableForegroundDispatch(this)
+        try {
+            nfcAdapter?.disableForegroundDispatch(this)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
