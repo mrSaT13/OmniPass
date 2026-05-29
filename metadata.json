@@ -1,0 +1,6 @@
+{
+  "name": "OmniPass",
+  "description": "Smart keeper for all your cards, passes, NFC tags, loyalty cards and finances. With secure biometric entry, Gemini-powered receipt scanning, theme customization and live maps integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
