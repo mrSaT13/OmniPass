@@ -34,6 +34,8 @@ sealed class Screen {
 class OmniPassViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "OmniPassViewModel"
 
+    private val prefs = application.getSharedPreferences("omnipass_prefs", android.content.Context.MODE_PRIVATE)
+
     private val db = Room.databaseBuilder(
         application,
         AppDatabase::class.java,
@@ -53,8 +55,14 @@ class OmniPassViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // --- Visual state controllers ---
-    val currentScreen = MutableStateFlow<Screen>(Screen.Onboarding)
+    val currentScreen = MutableStateFlow<Screen>(
+        if (application.getSharedPreferences("omnipass_prefs", android.content.Context.MODE_PRIVATE)
+            .getBoolean("onboarding_finished", false)) Screen.Dashboard else Screen.Onboarding
+    )
     val selectedCardId = MutableStateFlow<Int?>(null)
+    
+    // Scanned NFC RFID Tags
+    val scannedNfcTagId = MutableStateFlow<String?>(null)
     
     // Custom Accent/Theme setup (User customizable gradients and buttons)
     val customAccentColor = MutableStateFlow("#FF6B00") // Default warm orange
@@ -318,6 +326,30 @@ class OmniPassViewModel(application: Application) : AndroidViewModel(application
     fun helperClearAllFinance() {
         viewModelScope.launch {
             repository.clearAllFinances()
+        }
+    }
+
+    fun completeOnboarding() {
+        prefs.edit().putBoolean("onboarding_finished", true).apply()
+        navigateTo(Screen.Dashboard)
+    }
+
+    fun helperResetFullApp() {
+        viewModelScope.launch {
+            repository.clearAllCards()
+            repository.clearAllFinances()
+            prefs.edit().putBoolean("onboarding_finished", false).apply()
+            navigateTo(Screen.Onboarding)
+        }
+    }
+
+    fun onNfcTagScanned(tagId: String) {
+        scannedNfcTagId.value = tagId
+        viewModelScope.launch {
+            val matchedCard = cards.value.firstOrNull { it.nfcTagId?.equals(tagId, ignoreCase = true) == true }
+            if (matchedCard != null) {
+                selectCard(matchedCard.id)
+            }
         }
     }
 

@@ -1,6 +1,10 @@
 package com.example
 
 import android.os.Bundle
+import android.nfc.NfcAdapter
+import android.nfc.Tag
+import android.content.Intent
+import android.app.PendingIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,13 +35,18 @@ import com.example.ui.viewmodel.OmniPassViewModel
 import com.example.ui.viewmodel.Screen
 
 class MainActivity : ComponentActivity() {
+    private var nfcAdapter: NfcAdapter? = null
+    private var mViewModel: OmniPassViewModel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
                 // Initialize modern State ViewModel
                 val viewModel: OmniPassViewModel = viewModel()
+                mViewModel = viewModel
                 
                 val currentScreen by viewModel.currentScreen.collectAsState()
                 val lang by viewModel.appLanguage.collectAsState()
@@ -175,6 +184,41 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        nfcAdapter?.let { adapter ->
+            val intent = Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            adapter.enableForegroundDispatch(this, pendingIntent, null, null)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        nfcAdapter?.disableForegroundDispatch(this)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleNfcIntent(intent)
+    }
+
+    private fun handleNfcIntent(intent: Intent) {
+        if (NfcAdapter.ACTION_TAG_DISCOVERED == intent.action ||
+            NfcAdapter.ACTION_TECH_DISCOVERED == intent.action ||
+            NfcAdapter.ACTION_NDEF_DISCOVERED == intent.action) {
+            val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
+            tag?.let {
+                val idBytes = it.id
+                val idHex = idBytes.joinToString("") { byte -> "%02X".format(byte) }
+                mViewModel?.onNfcTagScanned(idHex)
             }
         }
     }

@@ -7,12 +7,15 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import coil.compose.AsyncImage
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,38 +76,118 @@ fun CardStack(
     }
 
     var selectedIndex by remember { mutableStateOf(0) }
-    val cardList = cards.take(6) // limit to top 6 beautiful stack
+    
+    // Safety check for dynamic item count changes
+    LaunchedEffect(cards.size) {
+        if (selectedIndex >= cards.size) {
+            selectedIndex = 0
+        }
+    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(310.dp),
-        contentAlignment = Alignment.Center
+    val cardList = cards
+    val size = cardList.size
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        cardList.forEachIndexed { index, card ->
-            val isCurrent = index == selectedIndex
-            key(card.id) {
-                Interactive3DCard(
-                    card = card,
-                    lang = lang,
-                    isCurrent = isCurrent,
-                    indexInStack = index - selectedIndex,
-                    isBiometricUnlocked = isBiometricUnlocked,
-                    onSwipedLeft = {
-                        selectedIndex = (selectedIndex + 1) % cardList.size
-                    },
-                    onSwipedRight = {
-                        selectedIndex = if (selectedIndex > 0) selectedIndex - 1 else cardList.size - 1
-                    },
-                    onCardTap = {
-                        if (card.type == "BANK") {
-                            onRequestUnlock(card) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            // Sort cards rendering order so background depths render first and active card renders last (on top)
+            val maxVisibleDepth = 3
+            val renderOrder = (maxVisibleDepth - 1 downTo 0).mapNotNull { offset ->
+                val targetIndex = (selectedIndex + offset) % size
+                if (targetIndex >= 0 && targetIndex < size) {
+                    Triple(targetIndex, cardList[targetIndex], offset)
+                } else null
+            }.distinctBy { it.first }
+
+            renderOrder.forEach { (index, card, indexInStack) ->
+                val isCurrent = index == selectedIndex
+                key(card.id) {
+                    Interactive3DCard(
+                        card = card,
+                        lang = lang,
+                        isCurrent = isCurrent,
+                        indexInStack = indexInStack,
+                        isBiometricUnlocked = isBiometricUnlocked,
+                        onSwipedLeft = {
+                            selectedIndex = (selectedIndex + 1) % size
+                        },
+                        onSwipedRight = {
+                            selectedIndex = if (selectedIndex > 0) selectedIndex - 1 else size - 1
+                        },
+                        onCardTap = {
+                            if (card.type == "BANK") {
+                                onRequestUnlock(card) {
+                                    onCardSelected(card.id)
+                                }
+                            } else {
                                 onCardSelected(card.id)
                             }
-                        } else {
-                            onCardSelected(card.id)
                         }
-                    }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Deck Controls Navigation Indicators Bar
+        Row(
+            modifier = Modifier
+                .wrapContentWidth()
+                .background(Color(0xFF0F1723), RoundedCornerShape(18.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            androidx.compose.material3.IconButton(
+                onClick = {
+                    selectedIndex = if (selectedIndex > 0) selectedIndex - 1 else size - 1
+                },
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Color(0xFF1B2636))
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Previous Card",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Text(
+                text = if (lang == "ru") {
+                    "Карта ${selectedIndex + 1} из $size"
+                } else {
+                    "Card ${selectedIndex + 1} of $size"
+                },
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            androidx.compose.material3.IconButton(
+                onClick = {
+                    selectedIndex = (selectedIndex + 1) % size
+                },
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Color(0xFF1B2636))
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "Next Card",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -145,7 +228,7 @@ fun Interactive3DCard(
     val targetAlpha = if (isCurrent) 1.0f else (1.0f - (Math.abs(indexInStack) * 0.25f)).coerceAtMost(1f).coerceAtLeast(0.2f)
     val animAlpha by animateFloatAsState(targetValue = targetAlpha, label = "animAlpha")
 
-    val targetOffsetY = if (isCurrent) 0f else (indexInStack * 14f)
+    val targetOffsetY = if (isCurrent) 0f else (-indexInStack * 30f)
     val animOffsetY by animateFloatAsState(targetValue = targetOffsetY, label = "animOffsetY")
 
     val brush = CardGradients[card.gradientIndex % CardGradients.size]
@@ -206,6 +289,20 @@ fun Interactive3DCard(
             }
             .clickable { onCardTap() }
     ) {
+        if (card.customBgImage != null) {
+            AsyncImage(
+                model = card.customBgImage,
+                contentDescription = "Card Photo background",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+            // Draw a subtle translucent backing layer to preserve text contrast
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f))
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()

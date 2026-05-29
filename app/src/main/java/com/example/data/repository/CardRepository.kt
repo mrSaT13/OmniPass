@@ -23,6 +23,10 @@ class CardRepository(private val appDao: AppDao) {
         appDao.deleteCardById(id)
     }
 
+    suspend fun clearAllCards() {
+        appDao.clearAllCards()
+    }
+
     suspend fun insertFinance(finance: FinanceEntity) {
         appDao.insertFinance(finance)
     }

@@ -146,7 +146,7 @@ fun OnboardingScreen(viewModel: OmniPassViewModel) {
                         if (currentStep < 4) {
                             currentStep++
                         } else {
-                            viewModel.navigateTo(Screen.Dashboard)
+                            viewModel.completeOnboarding()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B00)),

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.ui.components.CardGradients
 import com.example.ui.viewmodel.OmniPassViewModel
 import com.example.ui.viewmodel.Screen
@@ -145,10 +146,24 @@ fun CardDetailsScreen(viewModel: OmniPassViewModel) {
                     .height(200.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(brush)
-                    .padding(20.dp)
             ) {
+                if (card.customBgImage != null) {
+                    AsyncImage(
+                        model = card.customBgImage,
+                        contentDescription = "Card Background Photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.25f))
+                    )
+                }
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(

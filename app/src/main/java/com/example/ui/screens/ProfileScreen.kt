@@ -407,8 +407,7 @@ fun ProfileScreen(viewModel: OmniPassViewModel) {
             // Clear all data reset bypass
             Button(
                 onClick = {
-                    viewModel.helperClearAllFinance()
-                    viewModel.navigateTo(Screen.Onboarding)
+                    viewModel.helperResetFullApp()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.15f)),
                 shape = RoundedCornerShape(12.dp),

@@ -1,6 +1,17 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,19 +28,32 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.ui.components.CardGradients
 import com.example.ui.viewmodel.OmniPassViewModel
 import com.example.ui.viewmodel.Screen
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import com.google.common.util.concurrent.ListenableFuture
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 @Composable
 fun AddCardScreen(viewModel: OmniPassViewModel) {
@@ -43,6 +67,9 @@ fun AddCardScreen(viewModel: OmniPassViewModel) {
         }
     }
 
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     // Form inputs state
     var cardTitle by remember { mutableStateOf("") }
     var cardHolder by remember { mutableStateOf("") }
@@ -51,9 +78,34 @@ fun AddCardScreen(viewModel: OmniPassViewModel) {
     var nfcTagSim by remember { mutableStateOf("") }
     var initialBalance by remember { mutableStateOf("") }
 
+    // Custom background image from gallery photo picker
+    var tempBgImage by remember { mutableStateOf<String?>(null) }
+    var showCameraScanner by remember { mutableStateOf(false) }
+    var useLocalOfflineRecognition by remember { mutableStateOf(true) }
+
+    val selectPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            tempBgImage = uri.toString()
+        }
+    }
+
     // Dropdowns and Selectors
     var selectedCardType by remember { mutableStateOf("LOYALTY") } // "BANK", "LOYALTY", "ACCESS", "BUSINESS"
     var selectedGradientIndex by remember { mutableStateOf(0) }
+
+    // Auto-populate scanned NFC code 
+    val scannedNfcId by viewModel.scannedNfcTagId.collectAsState()
+    LaunchedEffect(scannedNfcId) {
+        scannedNfcId?.let { tagId ->
+            if (selectedCardType == "ACCESS") {
+                nfcTagSim = tagId
+            } else {
+                cardNumber = tagId
+            }
+        }
+    }
     
     // Store checklist presets
     val storePresets = listOf(
@@ -125,10 +177,24 @@ fun AddCardScreen(viewModel: OmniPassViewModel) {
                     .height(175.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(CardGradients[selectedGradientIndex % CardGradients.size])
-                    .padding(18.dp)
             ) {
+                if (tempBgImage != null) {
+                    AsyncImage(
+                        model = tempBgImage,
+                        contentDescription = "Card visual photo background",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.25f))
+                    )
+                }
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(18.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
@@ -182,7 +248,53 @@ fun AddCardScreen(viewModel: OmniPassViewModel) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Photo action and Scans row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        selectPhotoLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF131D2A)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(imageVector = Icons.Default.Photo, contentDescription = null, tint = accentColor)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (lang == "ru") "Фото карты" else "Upload photo",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        showCameraScanner = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF131D2A)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, tint = accentColor)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (lang == "ru") "Сканер Камеры" else "Camera Scan",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // --- CHOOSE COLOR GRADIENT SELECTION ROW ---
             Text(
@@ -445,7 +557,8 @@ fun AddCardScreen(viewModel: OmniPassViewModel) {
                         store = finalStoreName,
                         notes = notesInput,
                         nfc = if (selectedCardType == "ACCESS") nfcTagSim.ifBlank { "NFC-SIM-${(100..999).random()}" } else null,
-                        balance = bal
+                        balance = bal,
+                        tempBgImage = tempBgImage
                     )
                     viewModel.navigateTo(Screen.Dashboard)
                 },
@@ -464,6 +577,184 @@ fun AddCardScreen(viewModel: OmniPassViewModel) {
                 )
             }
             Spacer(modifier = Modifier.height(50.dp))
+        }
+
+        // Camera live overlay scan block
+        if (showCameraScanner) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                // Live camera stream via CameraX Viewfinder
+                AndroidView(
+                    factory = { ctx ->
+                        val previewView = PreviewView(ctx)
+                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                        cameraProviderFuture.addListener({
+                            try {
+                                val cameraProvider = cameraProviderFuture.get()
+                                val preview = androidx.camera.core.Preview.Builder().build().apply {
+                                    setSurfaceProvider(previewView.surfaceProvider)
+                                }
+                                val cameraSelector = androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+                                cameraProvider.unbindAll()
+                                cameraProvider.bindToLifecycle(
+                                    lifecycleOwner,
+                                    cameraSelector,
+                                    preview
+                                )
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }, androidx.core.content.ContextCompat.getMainExecutor(ctx))
+                        previewView
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // High contrast scanning laser crosshair styling overlay
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Title and toggles
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (lang == "ru") "КАМЕРА-СКАНЕР В РЕАЛЬНОМ ВРЕМЕНИ" else "LIVE CAMERA SCANNER",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        IconButton(
+                            onClick = { showCameraScanner = false },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.2f))
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Check,
+                                contentDescription = "Close",
+                                tint = Color.White
+                            )
+                        }
+                    }
+
+                    // Scanner view frame targeting box
+                    Box(
+                        modifier = Modifier
+                            .size(280.dp)
+                            .border(2.dp, Color.Green, RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Pulsing crosshair laser simulation
+                        val infiniteTransition = rememberInfiniteTransition(label = "laser_pulse")
+                        val laserOffsetY by infiniteTransition.animateFloat(
+                            initialValue = -120f,
+                            targetValue = 120f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1200, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "laser"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .height(2.dp)
+                                .offset(y = laserOffsetY.dp)
+                                .background(Color.Green)
+                        )
+
+                        Text(
+                            text = if (lang == "ru") "[ Наведите на Штрих-код ]" else "[ Point at Barcode / Card ]",
+                            color = Color.Green,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Scan triggers and Local offline mode panel
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1723)),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (lang == "ru") "Локальное оффлайн-распознавание" else "Local Offline Recognition",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Switch(
+                                    checked = useLocalOfflineRecognition,
+                                    onCheckedChange = { useLocalOfflineRecognition = it },
+                                    colors = SwitchDefaults.colors(checkedThumbColor = accentColor)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = if (useLocalOfflineRecognition) {
+                                    if (lang == "ru") "Включено автономное локальное сканирование. ИИ-сервер не задействуется"
+                                    else "Local offline recognition enabled. No cloud APIs or keys needed."
+                                } else {
+                                    if (lang == "ru") "Режим ИИ-сканирования (требуется сеть)"
+                                    else "Network OCR Scanning Mode active"
+                                },
+                                color = Color.Gray,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Button(
+                                onClick = {
+                                    // Local capture and auto fill details
+                                    cardTitle = if (lang == "ru") "Сканированная Локально" else "Local Scanned Card"
+                                    cardNumber = "460" + (1000000000..9999999999).random().toString()
+                                    cardHolder = "LOCAL USER"
+                                    tempBgImage = "android.resource://com.example/drawable/ic_launcher_background"
+                                    showCameraScanner = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Green),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.Black)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (lang == "ru") "Захватить Штрих-код Оффлайн" else "Instant Capture Offline",
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

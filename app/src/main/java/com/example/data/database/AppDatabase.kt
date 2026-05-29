@@ -70,6 +70,9 @@ interface AppDao {
     @Query("DELETE FROM cards WHERE id = :id")
     suspend fun deleteCardById(id: Int)
 
+    @Query("DELETE FROM cards")
+    suspend fun clearAllCards()
+
     // --- Finance ---
     @Query("SELECT * FROM finances ORDER BY timestamp DESC")
     fun getAllFinances(): Flow<List<FinanceEntity>>
